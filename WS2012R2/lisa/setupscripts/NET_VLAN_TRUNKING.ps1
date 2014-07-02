@@ -418,6 +418,10 @@ $leaveTrail = $null
 # switch name
 $networkName = $null
 
+#Snapshot name
+$snapshotParam = $null
+
+
 # change working directory to root dir
 $testParams -match "RootDir=([^;]+)"
 if (-not $?)
@@ -481,6 +485,7 @@ foreach ($p in $params)
 	"STATIC_IP2" { $vm2StaticIP = $fields[1].Trim() }
     "NETMASK" { $netmask = $fields[1].Trim() }
     "LEAVE_TRAIL" { $leaveTrail = $fields[1].Trim() }
+    "SnapshotName" { $SnapshotName = $fields[1].Trim() }
     "NIC"   
     {
         $nicArgs = $fields[1].Split(',')
@@ -578,6 +583,12 @@ if (-not $ipv4)
     "Error: test parameter ipv4 was not specified"
     return $False
 }
+
+#set the parameter for the snapshot
+$snapshotParam = "SnapshotName = ${SnapshotName}"
+
+#revert VM2
+.\setupScripts\RevertSnapshot.ps1 -vmName $vm2Name -hvServer $hvServer -testParams $snapshotParam
 
 #
 # Verify the VMs exists

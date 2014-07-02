@@ -414,6 +414,10 @@ $netmask = $null
 # boolean to leave a trail
 $leaveTrail = $null
 
+#Snapshot name
+$snapshotParam = $null
+
+
 # change working directory to root dir
 $testParams -match "RootDir=([^;]+)"
 if (-not $?)
@@ -481,7 +485,8 @@ foreach ($p in $params)
 	"STATIC_IP2" { $vm3StaticIP = $fields[1].Trim() }
     "NETMASK" { $netmask = $fields[1].Trim() }
     "LEAVE_TRAIL" { $leaveTrail = $fields[1].Trim() }
-    "NIC"   
+    "SnapshotName" { $SnapshotName = $fields[1].Trim() }
+    "NIC"
     {
 		
         $nicArgs = $fields[1].Split(',')
@@ -569,6 +574,14 @@ if (-not $vm2Name)
     "Error: test parameter vm3Name was not specified"
     return $False
 }
+
+#set the parameter for the snapshot
+$snapshotParam = "SnapshotName = ${SnapshotName}"
+
+.\setupScripts\RevertSnapshot.ps1 -vmName $vm2Name -hvServer $hvServer -testParams $snapshotParam
+Start-sleep -s 5
+.\setupScripts\RevertSnapshot.ps1 -vmName $vm3Name -hvServer $hvServer -testParams $snapshotParam
+Start-sleep -s 5
 
 
 # make sure vm2 is not the same as vm1
@@ -850,7 +863,6 @@ else
 			}
 			
 		}
-		
 		.\setupScripts\NET_ADD_NIC_MAC.ps1 -vmName $vm3Name -hvServer $hvServer -testParams $vm3testParam
 	}
 	else
