@@ -290,9 +290,9 @@ if ($tries -le 0)
   $tries = $defaultTries
 }
 
-if ($vmNames.count -lt 3)
+if ($vmNames.count -lt 2)
 {
-  "Error: three VMs are necessary for the StartupLowCompete test."
+  "Error: two VMs are necessary for the High Priority test."
   return $false
 }
 
@@ -456,66 +456,19 @@ if (-not $?)
 
 # sleep a few seconds so all stresstestapp processes start and the memory assigned/demand gets updated
 start-sleep -s 10
-# get memory stats for vm1 and vm2 just before vm3 starts
+# get memory stats for vm1 and vm2
 [int64]$vm1Assigned = ($vm1.MemoryAssigned/[int64]1048576)
 [int64]$vm1Demand = ($vm1.MemoryDemand/[int64]1048576)
 [int64]$vm2Assigned = ($vm2.MemoryAssigned/[int64]1048576)
 [int64]$vm2Demand = ($vm2.MemoryDemand/[int64]1048576)
 
-"Memory stats after $vm1Name and $vm2Name started stresstestapp, but before $vm3Name starts: "
+"Memory stats after $vm1Name and $vm2Name started stresstestapp"
 "  ${vm1Name}: assigned - $vm1Assigned | demand - $vm1Demand"
 "  ${vm2Name}: assigned - $vm2Assigned | demand - $vm2Demand"
 
-# try to start VM3
-for ($i=0; $i -lt $tries; $i++)
-{
-
-  # test to see that jobs haven't finished before VM3 started
-  if ($job1.State -like "Completed")
-  {
-    "Error: VM1 $vm1Name finished the memory stresstest before VM3 started"
-    Stop-VM -VMName $vm2name -force
-    return $false
-  }
-
-  if ($job2.State -like "Completed")
-  {
-    "Error: VM2 $vm2Name finished the memory stresstest before VM3 started"
-    Stop-VM -VMName $vm2name -force
-    return $false
-  }
-
-  Start-VM -Name $vm3Name -ComputerName $hvServer -ErrorAction SilentlyContinue
-  if (-not $?)
-  {
-    "Warning: Unable to start VM ${vm3Name} on attempt $i"
-  }
-  else 
-  {
-    $i = 0
-    break   
-  }
-
-  Start-sleep -s 10
-}
-
-if ($i -ge $tries)
-{
-  "Error: Unable to start VM3 after $tries attempts"
-  Stop-VM -VMName $vm2name -force
-  return $false
-}
 
 
-# get memory stats after vm3 started
-[int64]$vm1AfterAssigned = ($vm1.MemoryAssigned/[int64]1048576)
-[int64]$vm1AfterDemand = ($vm1.MemoryDemand/[int64]1048576)
-[int64]$vm2AfterAssigned = ($vm2.MemoryAssigned/[int64]1048576)
-[int64]$vm2AfterDemand = ($vm2.MemoryDemand/[int64]1048576)
 
-"Memory stats after $vm1Name and $vm2Name started stresstestapp and after $vm3Name started: "
-"  ${vm1Name}: assigned - $vm1AfterAssigned | demand - $vm1AfterDemand"
-"  ${vm2Name}: assigned - $vm2AfterAssigned | demand - $vm2AfterDemand"
 
 # Wait for jobs to finish now and make sure they exited successfully
 $totalTimeout = $timeout = 720
@@ -568,7 +521,6 @@ if (-not $firstJobState -or -not $secondJobState)
 {
   "Error: consume memory script did not finish in $totalTimeout seconds"
   Stop-VM -VMName $vm2name -force
-  Stop-VM -VMName $vm3name -force
   return $false
 }
 
@@ -581,12 +533,11 @@ if (-not $firstJobState -or -not $secondJobState)
 "  ${vm1Name}: deltaAssigned - $vm1DeltaAssigned | deltaDemand - $vm1DeltaDemand"
 "  ${vm2Name}: deltaAssigned - $vm2DeltaAssigned | deltaDemand - $vm2DeltaDemand"
 
-# check that at least one of the first two VMs has lower assigned memory as a result of VM3 starting
-if ($vm1DeltaAssigned -le 0 -and $vm2DeltaAssigned -le 0)
+# check that at the first VM has higher assigned memory than the second
+if ($vm1DeltaAssigned -le $vm2DeltaAssigned)
 {
-  "Error: Neither $vm1Name, nor $vm2Name didn't lower their assigned memory in response to $vm3Name starting"
+  "Error: $vm2Name has more memory assigned than $vm1Name"
   Stop-VM -VMName $vm2name -force
-  Stop-VM -VMName $vm3name -force
   return $false
 }
 
@@ -595,35 +546,17 @@ if ($vm1DeltaAssigned -le 0 -and $vm2DeltaAssigned -le 0)
 [int64]$vm2EndAssigned = ($vm2.MemoryAssigned/[int64]1048576)
 [int64]$vm2EndDemand = ($vm2.MemoryDemand/[int64]1048576)
 
-$sleepPeriod = 120 #seconds
-# get VM3's Memory
-while ($sleepPeriod -gt 0)
+start-sleep -s 5
+
+if ($vm1EndAssigned -le 0 -or $vm1EndDemand -le 0 -or $vm2EndAssigned -le 0 -or $vm2EndDemand -le 0)
 {
-
-  [int64]$vm3EndAssigned = ($vm3.MemoryAssigned/[int64]1048576)
-  [int64]$vm3EndDemand = ($vm3.MemoryDemand/[int64]1048576)
-
-  if ($vm3EndAssigned -gt 0 -and $vm3EndDemand -gt 0)
-  {
-    break
-  }
-
-  $sleepPeriod-= 5
-  start-sleep -s 5
-
-}
-
-if ($vm1EndAssigned -le 0 -or $vm1EndDemand -le 0 -or $vm2EndAssigned -le 0 -or $vm2EndDemand -le 0 -or $vm3EndAssigned -le 0 -or $vm3EndDemand -le 0)
-{
-  "Error: One of the VMs reports 0 memory (assigned of demand) after vm3 $vm3Name started"
+  "Error: One of the VMs reports 0 memory (assigned of demand)"
   Stop-VM -VMName $vm2name -force
-  Stop-VM -VMName $vm3name -force
   return $false
 }
 
-# stop vm2 and vm3
+# stop vm2
 Stop-VM -VMName $vm2name -force
-Stop-VM -VMName $vm3name -force
 
 # Everything ok
 "Success!"
