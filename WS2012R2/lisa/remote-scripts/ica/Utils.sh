@@ -1669,4 +1669,41 @@ IsFreeSpace()
 	return 0
 }
 
+#Validate that $1 is an IPv6 address
 
+CheckIPv6()
+{
+	#Check if the number of arguments passed to the function is correct
+	if [ 1 -ne $# ]; then
+		LogMsg "CheckIPv6 accepts 1 argument: IPv6 address"
+		return 100
+	fi
+
+	#Declare var IPv6
+	declare IPv6
+
+	#Assigning var IPv6 the only argument passed to the function
+	IPv6=$1
+
+	#Spliting string by colon [:] into an array of strings
+	IFS=':' read -ra IP <<< "$IPv6"
+
+	#Checking if number of groups is less than 8.
+	if [ ${#IP[@]}] -gt 8 ]; then
+		LogMsg "Invalid IPv6 address. Too many groups."
+		return 200
+	fi
+
+	#Iterating through each array
+	for group in "${IP[@]}"
+	do
+		#Check if a group is in hexazecimal format
+		if ! [[ $group =~ ^[0-9a-fA-F]{0,4}$ ]]; then
+			LogMsg "Group \"$group\" is not a valid IPv6 group"
+			return 300
+		fi
+	done
+
+	#Everything OK. Exit
+	return 0
+}
