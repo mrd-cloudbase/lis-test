@@ -560,7 +560,7 @@ SetIPstatic()
 	
 	# Get IP-Address
 	declare __IP_ADDRESS
-	__IP_ADDRESS=$(ip -o addr show "${SYNTH_NET_INTERFACES[$__iterator]}" | grep -vi inet6 | cut -d '/' -f1 | awk '{print $NF}' | grep -vi '[a-z]')
+	__IP_ADDRESS=$(ip -o addr show "$__interface" | grep -vi inet6 | cut -d '/' -f1 | awk '{print $NF}' | grep -vi '[a-z]')
 
 	if [ -z "$__IP_ADDRESS" ]; then
 		LogMsg "IP address $__ip did not get assigned to $__interface"
@@ -1666,5 +1666,116 @@ IsFreeSpace()
 	if [ "$2" -gt "$__total_free_bytes" ]; then
 		return 1
 	fi
+	return 0
+}
+
+#Validate that $1 is an IPv6 address
+
+CheckIPv6()
+{
+	LogMsg "Check if the number of arguments passed to the function is correct"
+	if [ 1 -ne $# ]; then
+		LogMsg "CheckIPv6 accepts 1 argument: IPv6 address"
+		return 100
+	fi
+
+	LogMsg "Declare var IPv6"
+	declare IPv6
+
+	LogMsg "Assigning var IPv6 the only argument passed to the function"
+	IPv6=$1
+
+	LogMsg "Spliting string by colon [:] into an array of strings"
+	IFS=':' read -ra IP <<< "$IPv6"
+
+	LogMsg "Checking if number of groups is less than 8."
+	if [ ${#IP[@]} -gt 8 ]; then
+		LogMsg "Invalid IPv6 address. Too many groups."
+		return 200
+	fi
+
+	LogMsg "Iterating through each array"
+	for group in "${IP[@]}"
+	do
+		#Check if a group is in hexazecimal format
+		if ! [[ $group =~ ^[0-9a-fA-F]{0,4}$ ]]; then
+			LogMsg "Group \"$group\" is not a valid IPv6 group"
+			return 300
+		fi
+	done
+
+	#Everything OK. Exit
+	return 0
+}
+
+
+# Set static IPv6 $1 on interface $2
+# Params:
+# $1 == static IPv6
+# $2 == interface
+# $3 == netmask [optional]
+SetIPv6Static()
+{
+	LogMsg "Check number of args passed to the function"
+	if [ 2 -gt $# ]; then
+		LogMsg "SetIPv6Static accepts 3 arguments: 1. static IPv6, 2. network interface, 3. netmask [optional]"
+		return 100
+	fi
+	
+	LogMsg  "Checking if the ip param is IPv6 like"
+	CheckIPv6 "$1"
+	if [ 0 -ne $? ]; then
+		LogMsg "Parameter $1 is not a valid IPv6 address"
+		return 1
+	fi
+
+	LogMsg "Check if network adapter is working"
+	ip link show "$2" > /dev/null 2>&1
+	if [ 0 -ne $? ]; then
+		LogMsg "Network adapter $2 is not working"
+		return 2
+	fi
+
+	# Declareing variables
+	declare __netmask
+	declare __interface
+	declare __ip
+
+	#Assigning values
+	__netmask=${3:-64}
+	__interface="$2"
+	__ip="$1"
+	
+	# Check if netmask is correct. Must be an integer from range [1-128]
+	if [ "$__netmask" -le 0 ] || [ "$__netmask" -gt 128 ]; then
+		LogMsg "SetIPv6Static: $__netmask is not a valid netmask"
+		return 3
+	fi
+
+	# Setting ip
+	ip -6 addr flush "$__interface"
+	ip -6 addr add "$__ip"/"$__netmask" dev "$__interface"
+
+	# Check if command managed to set ip
+	if [ 0 -ne $? ]; then
+		LogMsg "Unable to assign address $__ip/$__netmask to $__interface."
+		return 5
+	fi
+
+	# Checking if there is an ip to the interface in cause
+	declare __IP_ADDRESS
+	__IP_ADDRESS=$(ip -o addr show "$__interface" | grep -i inet6 | cut -d '/' -f1 | cut -d '6' -f2 | tr -d ' ')
+	if [ -z "$__IP_ADDRESS" ]; then
+		LogMsg "IPv6 address $__ip did not get assigned to $__interface"
+		return 3
+	fi
+	echo "$__IP_ADDRESS"
+	#Checking if found ipv6 address matches with the one we want to set.
+	if [ "$__IP_ADDRESS" != "$__ip" ]; then
+		LogMsg "New address $__IP_ADDRESS differs from static ipv6 $__ip on interface $__interface"
+		return 6
+	fi
+	
+	#OK
 	return 0
 }
